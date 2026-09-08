@@ -1,0 +1,42 @@
+{
+  "document_type": "invoice",
+  "invoice_number": "INV-2006",
+  "references_po": "PO-1005",
+  "vendor": {
+    "name": "Stark Industrial",
+    "address": {
+      "street": "200 Park Ave",
+      "city": "New York",
+      "state": "NY",
+      "postal_code": "10166",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@starkindustries.com",
+      "phone": "+1-212-555-0100"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-05-16",
+  "line_items": [
+    {
+      "description": "Arc reactor core",
+      "quantity": 2,
+      "unit_price": 10000.0,
+      "line_total": 20000.0,
+      "sku": "ARC-01"
+    },
+    {
+      "description": "Expedited handling fee",
+      "quantity": 1,
+      "unit_price": 8000.0,
+      "line_total": 8000.0
+    }
+  ],
+  "subtotal": 28000.0,
+  "shipping": 0.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total": 28000.0,
+  "notes": "Rush order surcharge applied."
+}

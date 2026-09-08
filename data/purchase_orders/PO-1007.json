@@ -1,0 +1,30 @@
+{
+  "document_type": "purchase_order",
+  "po_number": "PO-1007",
+  "vendor": {
+    "name": "Soylent Foods",
+    "address": {
+      "street": "Pier 7",
+      "city": "San Francisco",
+      "state": "CA",
+      "postal_code": "94111",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@soylentcorp.com",
+      "phone": "+1-415-555-0021"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-05-09",
+  "line_items": [
+    {
+      "description": "Ration pack, individual",
+      "quantity": 500,
+      "unit_price": 3.0,
+      "line_total": 1500.0
+    }
+  ],
+  "subtotal": 1500.0,
+  "total": 1500.0
+}

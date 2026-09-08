@@ -1,0 +1,35 @@
+{
+  "document_type": "invoice",
+  "invoice_number": "INV-2009",
+  "references_po": "PO-1008",
+  "vendor": {
+    "name": "Acme Office Supplies",
+    "address": {
+      "street": "12 Industrial Way",
+      "city": "Newark",
+      "state": "NJ",
+      "postal_code": "07101",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@acme-office.com",
+      "phone": "+1-201-555-0112"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-05-27",
+  "line_items": [
+    {
+      "description": "Toner cartridge, black",
+      "quantity": 30,
+      "unit_price": 40.0,
+      "line_total": 1200.0,
+      "sku": "TNR-BK"
+    }
+  ],
+  "subtotal": 1200.0,
+  "shipping": 0.0,
+  "tax": 96.0,
+  "discount": 0.0,
+  "total": 1296.0
+}

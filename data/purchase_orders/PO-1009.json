@@ -1,0 +1,6 @@
+{
+  "document_type": "purchase_order",
+  "po_number": "PO-1009",
+  "vendor": { "name": "Initech LLC", },
+  "line_items": [
+    {"description": "Server rack, 42U", "quantity": 2, "unit_price": 800.00, "line_total": 1600.00

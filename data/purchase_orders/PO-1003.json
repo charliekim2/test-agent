@@ -1,0 +1,39 @@
+{
+  "document_type": "purchase_order",
+  "po_number": "PO-1003",
+  "vendor": {
+    "name": "Initech LLC",
+    "address": {
+      "street": "404 Cubicle Ln",
+      "city": "Austin",
+      "state": "TX",
+      "postal_code": "73301",
+      "country": "US"
+    },
+    "contact": {
+      "email": "accounts@initech.com",
+      "phone": "+1-512-555-0143"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-05-05",
+  "line_items": [
+    {
+      "description": "Software license, annual",
+      "quantity": 10,
+      "unit_price": 500.0,
+      "line_total": 5000.0
+    },
+    {
+      "description": "Premium support, annual",
+      "quantity": 1,
+      "unit_price": 1200.0,
+      "line_total": 1200.0
+    }
+  ],
+  "subtotal": 6200.0,
+  "shipping": 0.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total": 6200.0
+}

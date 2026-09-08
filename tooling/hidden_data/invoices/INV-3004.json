@@ -1,0 +1,35 @@
+{
+  "document_type": "invoice",
+  "invoice_number": "INV-3004",
+  "references_po": "PO-2003",
+  "vendor": {
+    "name": "Tyrell Corp",
+    "address": {
+      "street": "900 Tyrell Plaza",
+      "city": "Los Angeles",
+      "state": "CA",
+      "postal_code": "90013",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@tyrell.com",
+      "phone": "+1-213-555-0174"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-06-12",
+  "line_items": [
+    {
+      "description": "Nexus-6 replicant",
+      "quantity": 4,
+      "unit_price": 50000.0,
+      "line_total": 200000.0,
+      "sku": "NX6"
+    }
+  ],
+  "subtotal": 200000.0,
+  "shipping": 0.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total": 200000.0
+}

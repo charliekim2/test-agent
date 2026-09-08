@@ -1,0 +1,35 @@
+{
+  "document_type": "invoice",
+  "invoice_number": "INV-3002",
+  "references_po": "PO-2002",
+  "vendor": {
+    "name": "Cyberdyne Systems",
+    "address": {
+      "street": "18144 El Camino Real",
+      "city": "Sunnyvale",
+      "state": "CA",
+      "postal_code": "94087",
+      "country": "US"
+    },
+    "contact": {
+      "email": "billing@cyberdyne.com",
+      "phone": "+1-408-555-0162"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-06-10",
+  "line_items": [
+    {
+      "description": "T-800 endoskeleton unit",
+      "quantity": 5,
+      "unit_price": 4000.0,
+      "line_total": 20000.0,
+      "sku": "T800"
+    }
+  ],
+  "subtotal": 20000.0,
+  "shipping": 0.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total": 20000.0
+}

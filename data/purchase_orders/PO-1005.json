@@ -1,0 +1,34 @@
+{
+  "document_type": "purchase_order",
+  "po_number": "PO-1005",
+  "vendor": {
+    "name": "Stark Industrial",
+    "address": {
+      "street": "200 Park Ave",
+      "city": "New York",
+      "state": "NY",
+      "postal_code": "10166",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@starkindustries.com",
+      "phone": "+1-212-555-0100"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-05-07",
+  "line_items": [
+    {
+      "description": "Arc reactor core",
+      "quantity": 2,
+      "unit_price": 10000.0,
+      "line_total": 20000.0,
+      "sku": "ARC-01"
+    }
+  ],
+  "subtotal": 20000.0,
+  "shipping": 0.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total": 20000.0
+}

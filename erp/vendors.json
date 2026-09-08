@@ -1,0 +1,210 @@
+[
+  {
+    "vendor_id": "VEND-001",
+    "canonical_name": "ACME Office Supply Co.",
+    "address": {
+      "street": "12 Industrial Way",
+      "city": "Newark",
+      "state": "NJ",
+      "postal_code": "07101",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@acme-office.com",
+      "phone": "+1-201-555-0112"
+    },
+    "tax_id": "12-3456789"
+  },
+  {
+    "vendor_id": "VEND-002",
+    "canonical_name": "Globex Corporation",
+    "address": {
+      "street": "500 Globex Plaza",
+      "city": "Springfield",
+      "state": "IL",
+      "postal_code": "62704",
+      "country": "US"
+    },
+    "contact": {
+      "email": "billing@globex.com",
+      "phone": "+1-217-555-0190"
+    },
+    "tax_id": "98-7654321"
+  },
+  {
+    "vendor_id": "VEND-003",
+    "canonical_name": "Initech, LLC",
+    "address": {
+      "street": "404 Cubicle Ln",
+      "city": "Austin",
+      "state": "TX",
+      "postal_code": "73301",
+      "country": "US"
+    },
+    "contact": {
+      "email": "accounts@initech.com",
+      "phone": "+1-512-555-0143"
+    },
+    "tax_id": "45-6789012"
+  },
+  {
+    "vendor_id": "VEND-004",
+    "canonical_name": "Umbrella Ind.",
+    "address": {
+      "street": "1 Raccoon Blvd",
+      "city": "Raccoon City",
+      "state": "MI",
+      "postal_code": "48201",
+      "country": "US"
+    },
+    "contact": {
+      "email": "payables@umbrella-ind.com",
+      "phone": "+1-313-555-0177"
+    },
+    "tax_id": "23-4567890"
+  },
+  {
+    "vendor_id": "VEND-005",
+    "canonical_name": "Stark Industries Inc.",
+    "address": {
+      "street": "200 Park Ave",
+      "city": "New York",
+      "state": "NY",
+      "postal_code": "10166",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@starkindustries.com",
+      "phone": "+1-212-555-0100"
+    },
+    "tax_id": "31-9999999"
+  },
+  {
+    "vendor_id": "VEND-006",
+    "canonical_name": "Wayne Enterprises",
+    "address": {
+      "street": "1007 Mountain Dr",
+      "city": "Gotham",
+      "state": "NJ",
+      "postal_code": "07003",
+      "country": "US"
+    },
+    "contact": {
+      "email": "vendors@wayne-enterprises.com",
+      "phone": "+1-201-555-0007"
+    },
+    "tax_id": "11-2233445"
+  },
+  {
+    "vendor_id": "VEND-007",
+    "canonical_name": "Soylent Corp",
+    "address": {
+      "street": "Pier 7",
+      "city": "San Francisco",
+      "state": "CA",
+      "postal_code": "94111",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@soylentcorp.com",
+      "phone": "+1-415-555-0021"
+    },
+    "tax_id": "77-8899001"
+  },
+  {
+    "vendor_id": "VEND-008",
+    "canonical_name": "Wonka Industries, Inc.",
+    "address": {
+      "street": "1 Cocoa Lane",
+      "city": "Hershey",
+      "state": "PA",
+      "postal_code": "17033",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@wonka-industries.com",
+      "phone": "+1-717-555-0150"
+    },
+    "tax_id": "55-1112223"
+  },
+  {
+    "vendor_id": "VEND-009",
+    "canonical_name": "Cyberdyne Systems Corp",
+    "address": {
+      "street": "18144 El Camino Real",
+      "city": "Sunnyvale",
+      "state": "CA",
+      "postal_code": "94087",
+      "country": "US"
+    },
+    "contact": {
+      "email": "billing@cyberdyne.com",
+      "phone": "+1-408-555-0162"
+    },
+    "tax_id": "55-3334445"
+  },
+  {
+    "vendor_id": "VEND-010",
+    "canonical_name": "Tyrell Corporation",
+    "address": {
+      "street": "900 Tyrell Plaza",
+      "city": "Los Angeles",
+      "state": "CA",
+      "postal_code": "90013",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@tyrell.com",
+      "phone": "+1-213-555-0174"
+    },
+    "tax_id": "55-5556667"
+  },
+  {
+    "vendor_id": "VEND-011",
+    "canonical_name": "OsCorp Industries",
+    "address": {
+      "street": "5th Avenue Tower",
+      "city": "New York",
+      "state": "NY",
+      "postal_code": "10001",
+      "country": "US"
+    },
+    "contact": {
+      "email": "payables@oscorp.com",
+      "phone": "+1-212-555-0186"
+    },
+    "tax_id": "55-7778889"
+  },
+  {
+    "vendor_id": "VEND-012",
+    "canonical_name": "Pied Piper LLC",
+    "address": {
+      "street": "5230 Newell Rd",
+      "city": "Palo Alto",
+      "state": "CA",
+      "postal_code": "94303",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@piedpiper.com",
+      "phone": "+1-650-555-0198"
+    },
+    "tax_id": "55-9990001"
+  },
+  {
+    "vendor_id": "VEND-013",
+    "canonical_name": "Hooli Inc.",
+    "address": {
+      "street": "1401 N Shoreline Blvd",
+      "city": "Mountain View",
+      "state": "CA",
+      "postal_code": "94043",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@hooli.com",
+      "phone": "+1-650-555-0110"
+    },
+    "tax_id": "55-2223334"
+  }
+]

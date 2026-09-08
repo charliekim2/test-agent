@@ -1,0 +1,230 @@
+openapi: 3.1.0
+info:
+  title: Fake ERP
+  description: 'Minimal ERP stand-in: list vendors and post bills. POST /bills validates
+    the hidden vendor->order->invoice relationship.'
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      summary: Health
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /vendors:
+    get:
+      summary: List Vendors
+      description: All vendors known to the ERP. Use these to resolve `vendor_id`.
+      operationId: list_vendors_vendors_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/Vendor'
+                type: array
+                title: Response List Vendors Vendors Get
+  /bills:
+    post:
+      summary: Post Bill
+      description: 'Post a bill. Validated in order; the first failure is returned.
+
+
+        1. `vendor_id` must exist                       -> 404 vendor_not_found
+
+        2. `order_number` must belong to that vendor    -> 422 order_vendor_mismatch
+
+        3. every `invoice_number` must belong to order  -> 422 invoice_order_mismatch'
+      operationId: post_bill_bills_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    Address:
+      properties:
+        street:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Street
+        city:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: City
+        state:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: State
+        postal_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Postal Code
+        country:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Country
+      type: object
+      title: Address
+    BillCreate:
+      properties:
+        vendor_id:
+          type: string
+          title: Vendor Id
+          examples:
+          - VEND-001
+        order_number:
+          type: string
+          title: Order Number
+          examples:
+          - PO-0000
+        invoice_numbers:
+          items:
+            type: string
+          type: array
+          minItems: 1
+          title: Invoice Numbers
+          examples:
+          - - INV-0000
+        total_amount:
+          type: number
+          title: Total Amount
+          examples:
+          - 1234.56
+        currency:
+          type: string
+          title: Currency
+          default: USD
+        lines:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/BillLine'
+            type: array
+          - type: 'null'
+          title: Lines
+      type: object
+      required:
+      - vendor_id
+      - order_number
+      - invoice_numbers
+      - total_amount
+      title: BillCreate
+    BillLine:
+      properties:
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        quantity:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Quantity
+        unit_price:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Unit Price
+        amount:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Amount
+      type: object
+      title: BillLine
+    Contact:
+      properties:
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+        phone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Phone
+      type: object
+      title: Contact
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    Vendor:
+      properties:
+        vendor_id:
+          type: string
+          title: Vendor Id
+        canonical_name:
+          type: string
+          title: Canonical Name
+        address:
+          anyOf:
+          - $ref: '#/components/schemas/Address'
+          - type: 'null'
+        contact:
+          anyOf:
+          - $ref: '#/components/schemas/Contact'
+          - type: 'null'
+        tax_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tax Id
+      type: object
+      required:
+      - vendor_id
+      - canonical_name
+      title: Vendor

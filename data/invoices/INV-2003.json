@@ -1,0 +1,35 @@
+{
+  "document_type": "invoice",
+  "invoice_number": "INV-2003",
+  "references_po": "PO-1002",
+  "vendor": {
+    "name": "Globex Corp",
+    "address": {
+      "street": "500 Globex Plaza",
+      "city": "Springfield",
+      "state": "IL",
+      "postal_code": "62704",
+      "country": "US"
+    },
+    "contact": {
+      "email": "billing@globex.com",
+      "phone": "+1-217-555-0190"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-05-18",
+  "line_items": [
+    {
+      "description": "Mounting bracket",
+      "quantity": 100,
+      "unit_price": 4.0,
+      "line_total": 400.0,
+      "sku": "BRK-01"
+    }
+  ],
+  "subtotal": 400.0,
+  "shipping": 0.0,
+  "tax": 32.0,
+  "discount": 0.0,
+  "total": 432.0
+}

@@ -1,0 +1,16 @@
+{
+  "name": "po-invoice-interview-node",
+  "version": "1.0.0",
+  "description": "Node app shell for the PO/invoice matching interview",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "document_type": "invoice",
+  "invoice_number": "INV-3005",
+  "references_po": "PO-2004",
+  "vendor": {
+    "name": "Oscorp",
+    "address": {
+      "street": "5th Avenue Tower",
+      "city": "New York",
+      "state": "NY",
+      "postal_code": "10001",
+      "country": "US"
+    },
+    "contact": {
+      "email": "payables@oscorp.com",
+      "phone": "+1-212-555-0186"
+    },
+    "tax_id": "55-7778889"
+  },
+  "currency": "USD",
+  "issue_date": "2026-06-14",
+  "line_items": [
+    {
+      "description": "Glider, prototype",
+      "quantity": 2,
+      "unit_price": 2100.0,
+      "line_total": 4200.0,
+      "sku": "GLD-P"
+    }
+  ],
+  "subtotal": 4200.0,
+  "shipping": 100.0,
+  "tax": 336.0,
+  "discount": 0.0,
+  "total": 4636.0
+}

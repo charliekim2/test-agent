@@ -1,0 +1,34 @@
+{
+  "document_type": "purchase_order",
+  "po_number": "PO-2005",
+  "vendor": {
+    "name": "Pied Piper",
+    "address": {
+      "street": "5230 Newell Rd",
+      "city": "Palo Alto",
+      "state": "CA",
+      "postal_code": "94303",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@piedpiper.com",
+      "phone": "+1-650-555-0198"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-06-05",
+  "line_items": [
+    {
+      "description": "Middle-out compression license, yr",
+      "quantity": 1,
+      "unit_price": 30000.0,
+      "line_total": 30000.0,
+      "sku": "MOC-1"
+    }
+  ],
+  "subtotal": 30000.0,
+  "shipping": 0.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total": 30000.0
+}

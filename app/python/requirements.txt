@@ -1,0 +1,7 @@
+# Storage + HTTP. Both ship as wheels — no native build toolchain needed.
+psycopg[binary]==3.2.3
+requests==2.32.3
+
+# Optional helpers you MIGHT want (uncomment if you use them):
+# jsonschema==4.23.0      # validate documents against schemas/
+# rapidfuzz==3.10.1        # fast fuzzy string matching for vendor names

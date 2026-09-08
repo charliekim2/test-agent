@@ -1,0 +1,43 @@
+{
+  "document_type": "purchase_order",
+  "po_number": "PO-1001",
+  "vendor": {
+    "name": "Acme Office Supplies",
+    "address": {
+      "street": "12 Industrial Way",
+      "city": "Newark",
+      "state": "NJ",
+      "postal_code": "07101",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@acme-office.com",
+      "phone": "+1-201-555-0112"
+    },
+    "tax_id": "12-3456789"
+  },
+  "currency": "USD",
+  "issue_date": "2026-05-03",
+  "line_items": [
+    {
+      "description": "Copy paper, 500ct case",
+      "quantity": 100,
+      "unit_price": 5.0,
+      "line_total": 500.0,
+      "sku": "PAP-500"
+    },
+    {
+      "description": "Ballpoint pens, box of 12",
+      "quantity": 50,
+      "unit_price": 2.0,
+      "line_total": 100.0,
+      "sku": "PEN-012"
+    }
+  ],
+  "subtotal": 600.0,
+  "shipping": 20.0,
+  "tax": 49.6,
+  "discount": 0.0,
+  "total": 669.6,
+  "department": "Facilities"
+}

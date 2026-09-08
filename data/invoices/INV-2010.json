@@ -1,0 +1,24 @@
+{
+  "document_type": "invoice",
+  "invoice_number": "INV-2010",
+  "references_po": "PO-1002",
+  "vendor": {
+    "name": "Globex Corp",
+    "contact": {
+      "email": "billing@globex.com"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-05-21",
+  "line_items": [
+    {
+      "description": "Consulting services, hrs",
+      "quantity": "20",
+      "unit_price": 150.0,
+      "line_total": 3000.0
+    }
+  ],
+  "subtotal": 3000.0,
+  "tax": 240.0,
+  "total": "3,240.00"
+}

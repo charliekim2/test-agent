@@ -1,0 +1,23 @@
+{
+  "document_type": "invoice",
+  "invoice_number": "INV-2008",
+  "references_po": "PO-1007",
+  "vendor": {
+    "name": "Soylent Foods",
+    "contact": {
+      "email": "ap@soylentcorp.com",
+      "phone": "+1-415-555-0021"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-05-19",
+  "line_items": [
+    {
+      "description": "Ration pack, individual",
+      "quantity": 500,
+      "unit_price": 3.0,
+      "line_total": 1500.0
+    }
+  ],
+  "total": 1500.0
+}

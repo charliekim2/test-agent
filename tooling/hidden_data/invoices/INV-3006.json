@@ -1,0 +1,34 @@
+{
+  "document_type": "invoice",
+  "invoice_number": "INV-3006",
+  "vendor": {
+    "name": "Hooli",
+    "address": {
+      "street": "1401 N Shoreline Blvd",
+      "city": "Mountain View",
+      "state": "CA",
+      "postal_code": "94043",
+      "country": "US"
+    },
+    "contact": {
+      "email": "ap@hooli.com",
+      "phone": "+1-650-555-0110"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-06-16",
+  "line_items": [
+    {
+      "description": "Cloud hosting, monthly",
+      "quantity": 12,
+      "unit_price": 800.0,
+      "line_total": 9600.0,
+      "sku": "CLD-M"
+    }
+  ],
+  "subtotal": 9600.0,
+  "shipping": 0.0,
+  "tax": 768.0,
+  "discount": 0.0,
+  "total": 10368.0
+}

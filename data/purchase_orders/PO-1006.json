@@ -1,0 +1,33 @@
+{
+  "document_type": "purchase_order",
+  "po_number": "PO-1006",
+  "vendor": {
+    "name": "Wayne Ent.",
+    "address": {
+      "street": "1007 Mountain Dr",
+      "city": "Gotham",
+      "state": "NJ",
+      "postal_code": "07003",
+      "country": "US"
+    },
+    "contact": {
+      "email": "vendors@wayne-enterprises.com",
+      "phone": "+1-201-555-0007"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-05-08",
+  "line_items": [
+    {
+      "description": "Security audit, engagement",
+      "quantity": 1,
+      "unit_price": 9000.0,
+      "line_total": 9000.0
+    }
+  ],
+  "subtotal": 9000.0,
+  "shipping": 0.0,
+  "tax": 0.0,
+  "discount": 0.0,
+  "total": 9000.0
+}

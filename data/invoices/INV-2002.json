@@ -1,0 +1,36 @@
+{
+  "document_type": "invoice",
+  "invoice_number": "INV-2002",
+  "references_po": "PO-1002",
+  "vendor": {
+    "name": "Globex Corp",
+    "address": {
+      "street": "500 Globex Plaza",
+      "city": "Springfield",
+      "state": "IL",
+      "postal_code": "62704",
+      "country": "US"
+    },
+    "contact": {
+      "email": "billing@globex.com",
+      "phone": "+1-217-555-0190"
+    }
+  },
+  "currency": "USD",
+  "issue_date": "2026-05-12",
+  "line_items": [
+    {
+      "description": "Widget, type A",
+      "quantity": 200,
+      "unit_price": 10.0,
+      "line_total": 2000.0,
+      "sku": "WID-A"
+    }
+  ],
+  "subtotal": 2000.0,
+  "shipping": 0.0,
+  "tax": 160.0,
+  "discount": 0.0,
+  "total": 2160.0,
+  "payment_terms": "NET 30"
+}

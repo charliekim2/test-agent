@@ -1,0 +1,20 @@
+# /tooling/
+
+# Python
+**/.venv/
+**/__pycache__/
+*.pyc
+
+# Node
+**/node_modules/
+**/package-lock.json
+
+# SQLite fallback DB
+*.sqlite
+*.sqlite3
+
+# Candidate bundle
+dist/
+
+# OS
+.DS_Store

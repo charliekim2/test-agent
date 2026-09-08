@@ -1,0 +1,36 @@
+{
+  "document_type": "invoice",
+  "invoice_number": "INV-2005",
+  "references_po": "PO-1004",
+  "vendor": {
+    "name": "Umbrella Industries",
+    "address": {
+      "street": "1 Raccoon Blvd",
+      "city": "Raccoon City",
+      "state": "MI",
+      "postal_code": "48201",
+      "country": "US"
+    },
+    "contact": {
+      "email": "payables@umbrella-ind.com",
+      "phone": "+1-313-555-0177"
+    },
+    "tax_id": "23-4567890"
+  },
+  "currency": "USD",
+  "issue_date": "2026-05-15",
+  "line_items": [
+    {
+      "description": "Steel drum, 55gal",
+      "quantity": 38,
+      "unit_price": 26.0,
+      "line_total": 988.0,
+      "sku": "DRM-55"
+    }
+  ],
+  "subtotal": 988.0,
+  "shipping": 50.0,
+  "tax": 79.04,
+  "discount": 0.0,
+  "total": 1117.04
+}

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://finofo.interview/schemas/invoice.schema.json",
+  "title": "Invoice",
+  "description": "The ideal shape of an invoice. Same as a purchase order but keyed by invoice_number instead of po_number, with an optional `references_po` hint. Only a minimal core is required; additional fields are allowed and may aid matching. Some seed documents deliberately violate this schema to exercise input validation.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["document_type", "invoice_number", "vendor", "line_items", "total", "currency", "issue_date"],
+  "properties": {
+    "document_type": { "const": "invoice" },
+    "invoice_number": {
+      "type": "string",
+      "pattern": "^INV-\\d{4}$",
+      "description": "Invoice (bill) identifier."
+    },
+    "references_po": {
+      "type": "string",
+      "description": "A HINT at the related PO. Optional, and may be absent or wrong — do not treat as ground truth."
+    },
+    "vendor": { "$ref": "#/$defs/vendor" },
+    "line_items": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/line_item" }
+    },
+    "currency": { "type": "string", "description": "ISO 4217 currency code. Always present." },
+    "issue_date": { "type": "string", "format": "date", "description": "Invoice date (ISO 8601). Always present; normally on or after the PO date, so a useful matching signal." },
+    "subtotal": { "type": "number", "description": "Ideally sum of line_total. Optional; may be missing." },
+    "shipping": { "type": "number", "description": "Defaults to 0 if absent." },
+    "tax": { "type": "number" },
+    "discount": { "type": "number", "description": "Positive amount subtracted from the total." },
+    "total": { "type": "number", "description": "The anchor amount. Always required." }
+  },
+  "$defs": {
+    "vendor": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "Vendor name as written on the document. Spelling may differ slightly from the ERP's canonical name." },
+        "address": { "$ref": "#/$defs/address" },
+        "contact": { "$ref": "#/$defs/contact" },
+        "tax_id": { "type": "string", "description": "Sporadic; a strong match key when present." }
+      }
+    },
+    "address": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "street": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "postal_code": { "type": "string" },
+        "country": { "type": "string" }
+      }
+    },
+    "contact": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" }
+      }
+    },
+    "line_item": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["description", "quantity", "unit_price", "line_total"],
+      "properties": {
+        "description": { "type": "string" },
+        "sku": { "type": "string", "description": "Sporadic; aids line-level matching when present." },
+        "quantity": { "type": "number", "minimum": 0 },
+        "unit_price": { "type": "number", "minimum": 0 },
+        "line_total": { "type": "number", "minimum": 0, "description": "Ideally quantity * unit_price." }
+      }
+    }
+  }
+}
