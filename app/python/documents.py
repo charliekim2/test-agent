@@ -160,30 +160,116 @@ def _is_number(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
-_DATE_FORMATS = ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%b-%Y", "%d %b %Y", "%B %d %Y")
+_MONTH_WORDS = {
+    "jan": 1, "january": 1,
+    "feb": 2, "febr": 2, "february": 2,
+    "mar": 3, "march": 3,
+    "apr": 4, "april": 4,
+    "may": 5,
+    "jun": 6, "june": 6,
+    "jul": 7, "july": 7,
+    "aug": 8, "august": 8,
+    "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10,
+    "nov": 11, "november": 11,
+    "dec": 12, "december": 12,
+}
+
+# Trailing clock time (with optional timezone) on an otherwise plain date.
+_TIME_TAIL_RE = re.compile(
+    r"^(?P<date>.+?)[t ]\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?"
+    r"\s*(?:z|[+-]\d{2}:?\d{2}|[+-]\d{2}|utc|gmt)?$"
+)
+_ORDINAL_RE = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\b")
+
+_YMD_RE = re.compile(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$")
+_DMY_RE = re.compile(r"^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$")
+_DMY2_RE = re.compile(r"^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2})$")
+_COMPACT_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})$")
+_MONTH_FIRST_RE = re.compile(r"^([a-z]+)[-. ]+(\d{1,2})[-. ]+(\d{4})$")
+_DAY_FIRST_RE = re.compile(r"^(\d{1,2})[-. ]+([a-z]+)[-. ]+(\d{4})$")
+_YEAR_MONTH_DAY_WORD_RE = re.compile(r"^(\d{4})[-. ]+([a-z]+)[-. ]+(\d{1,2})$")
+
+
+def _is_calendar_date(year, month, day):
+    """True when (year, month, day) is a real calendar date."""
+    try:
+        datetime.date(int(year), int(month), int(day))
+    except (ValueError, OverflowError, TypeError):
+        return False
+    return True
 
 
 def _looks_like_date(s):
-    """True when `s` (a str) parses as a calendar date in a common format."""
+    """True when `s` (a str) is a HUMAN-READABLE calendar date.
+
+    Deliberately permissive.  Schema validation for ``issue_date`` is a field
+    TYPE check plus a sanity check that the string denotes a real date; it is
+    NOT an enforcement of one house date format.  Any string a reader would
+    recognise as a date - ISO, slashed, dotted, compact, or spelled out with a
+    month name in either order, with or without an ordinal suffix, a comma or
+    a trailing clock time - is accepted.  Only strings that denote no calendar
+    date at all (``"not a date"``, ``"2026-13-45"``, ``""``) are rejected.
+    """
+    if not isinstance(s, str):
+        return False
     text = s.strip()
     if not text:
         return False
-    try:
-        datetime.date.fromisoformat(text)
-        return True
-    except ValueError:
-        pass
-    try:
-        datetime.datetime.fromisoformat(text)
-        return True
-    except ValueError:
-        pass
-    for fmt in _DATE_FORMATS:
+
+    # ISO 8601 first: the canonical form, and the widest coverage per call.
+    for parser in (datetime.date.fromisoformat, datetime.datetime.fromisoformat):
         try:
-            datetime.datetime.strptime(text, fmt)
+            parser(text)
             return True
-        except ValueError:
-            continue
+        except (ValueError, TypeError):
+            pass
+
+    # Normalise separators/decoration, then drop any trailing clock time.
+    lowered = text.casefold().replace(",", " ")
+    lowered = _ORDINAL_RE.sub(r"\1", lowered)
+    lowered = re.sub(r"\s+", " ", lowered).strip()
+    tail = _TIME_TAIL_RE.match(lowered)
+    if tail:
+        lowered = tail.group("date").strip()
+    lowered = lowered.rstrip(".").strip()
+    if not lowered:
+        return False
+
+    match = _YMD_RE.match(lowered) or _COMPACT_RE.match(lowered)
+    if match:
+        return _is_calendar_date(match.group(1), match.group(2), match.group(3))
+
+    match = _DMY_RE.match(lowered)
+    if match:
+        a, b, year = match.group(1), match.group(2), match.group(3)
+        # Day/month order is ambiguous (04/05/2026); either reading counts.
+        return _is_calendar_date(year, b, a) or _is_calendar_date(year, a, b)
+
+    match = _DMY2_RE.match(lowered)
+    if match:
+        a, b, year = match.group(1), match.group(2), 2000 + int(match.group(3))
+        return _is_calendar_date(year, b, a) or _is_calendar_date(year, a, b)
+
+    match = _MONTH_FIRST_RE.match(lowered)
+    if match:
+        month = _MONTH_WORDS.get(match.group(1))
+        if month is not None:
+            return _is_calendar_date(match.group(3), month, match.group(2))
+        return False
+
+    match = _DAY_FIRST_RE.match(lowered)
+    if match:
+        month = _MONTH_WORDS.get(match.group(2))
+        if month is not None:
+            return _is_calendar_date(match.group(3), month, match.group(1))
+        return False
+
+    match = _YEAR_MONTH_DAY_WORD_RE.match(lowered)
+    if match:
+        month = _MONTH_WORDS.get(match.group(2))
+        if month is not None:
+            return _is_calendar_date(match.group(1), month, match.group(3))
     return False
 
 

@@ -538,3 +538,73 @@ def test_one_bad_file_does_not_abort_load(tmp_path):
     result = load_documents(str(tmp_path))
     assert [p["document_number"] for p in result["purchase_orders"]] == ["PO-1002"]
     assert {m["path"] for m in result["malformed"]} == {"bad.json", "empty.json", "notjson.json"}
+
+
+# ---------------------------------------------------------------------------
+# Regression: readable dates are NOT schema violations (WO-0007)
+#
+# The issue_date check is a field TYPE check plus a sanity check that the
+# string denotes a real calendar date.  It is NOT enforcement of one house
+# date format: a document written with a spelled-out month, a slashed or
+# dotted date, or an ISO timestamp is perfectly readable and must load
+# clean.  Only strings that denote no date at all are reported.
+# ---------------------------------------------------------------------------
+
+
+READABLE_DATES = [
+    "2026-05-04",
+    "2026/05/04",
+    "2026-5-4",
+    "04/05/2026",
+    "05/04/2026",
+    "04.05.2026",
+    "20260504",
+    "4-May-2026",
+    "4 May 2026",
+    "May 4 2026",
+    "May 4, 2026",
+    "September 1, 2026",
+    "Sept 1, 2026",
+    "1st September 2026",
+    "2026-May-04",
+    "JULY 04 2026",
+    "2026-05-04T10:00:00",
+    "2026-05-04T10:00:00Z",
+    "2026-05-04T10:00:00+02:00",
+    "2026-05-04 10:00",
+    "  2026-05-04  ",
+]
+
+
+@pytest.mark.parametrize("value", READABLE_DATES)
+def test_readable_issue_dates_are_not_violations(tmp_path, value):
+    (tmp_path / "p.json").write_text(json.dumps(_po(issue_date=value)), encoding="utf-8")
+    result = load_documents(str(tmp_path))
+    assert [p["document_number"] for p in result["purchase_orders"]] == ["PO-1002"]
+    assert result["schema_violations"] == [], value
+    # The value is carried through verbatim; the loader does not rewrite it.
+    assert result["purchase_orders"][0]["issue_date"] == value
+
+
+def test_readable_issue_dates_do_not_crowd_out_real_violations(tmp_path):
+    # A readable-but-unusual date next to a genuinely missing field: exactly
+    # one problem is reported, and it is not about the date.
+    doc = _po(issue_date="May 4, 2026")
+    del doc["currency"]
+    (tmp_path / "p.json").write_text(json.dumps(doc), encoding="utf-8")
+    (violation,) = load_documents(str(tmp_path))["schema_violations"]
+    assert not any("issue_date" in p for p in violation["problems"])
+    assert any("currency" in p for p in violation["problems"])
+
+
+NON_DATES = ["not a date", "", "   ", "pending", "TBD", "n/a", "2026", "2026-13-45", "2026-02-30"]
+
+
+@pytest.mark.parametrize("value", NON_DATES)
+def test_non_dates_are_still_reported(tmp_path, value):
+    (tmp_path / "p.json").write_text(json.dumps(_po(issue_date=value)), encoding="utf-8")
+    result = load_documents(str(tmp_path))
+    # Never discarded, whatever the date says.
+    assert [p["document_number"] for p in result["purchase_orders"]] == ["PO-1002"]
+    (violation,) = result["schema_violations"]
+    assert any("issue_date" in p for p in violation["problems"]), value
