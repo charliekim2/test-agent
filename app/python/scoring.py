@@ -237,18 +237,38 @@ def _line_total(line):
     return quantity * unit_price
 
 
-def _sku(line):
-    """-> str; an identifier, compared EXACTLY.
+def _sku_key(line):
+    """-> hashable key | None; an identifier, compared EXACTLY.
 
-    Only surrounding whitespace is trimmed.  Case is significant: SKU `ABC`
-    and SKU `abc` are different identifiers and must not match exactly.
+    A SKU-exact match is the strongest line signal there is, so it must fire
+    only on identifiers that are genuinely equal.  Therefore:
+
+    * NO whitespace trimming - `"ABC "` and `"ABC"` are different
+      identifiers, and trimming would forge an exact match between them.
+    * NO string coercion - the integer `12345` and the string `"12345"` are
+      different identifiers, and `str()` would forge an exact match between
+      them.  The key carries the value's type, so `12345`, `12345.0` and
+      `"12345"` are three distinct identifiers.
+    * Case is significant: `ABC` and `abc` are different identifiers.
+    * Absent, blank (empty or whitespace-only) and non-scalar SKUs return
+      None, meaning "no identifier": such a line makes no exact-match claim
+      and must fall through to description similarity.  `bool` is excluded
+      because True/False are not identifiers.
     """
     value = line.get("sku")
-    if value is None:
-        return ""
-    if not isinstance(value, str):
-        value = str(value)
-    return value.strip()
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        if not value.strip():
+            return None
+        return ("str", value)
+    if isinstance(value, int):
+        return ("int", value)
+    if isinstance(value, float):
+        if value != value:  # NaN is never equal to itself
+            return None
+        return ("float", value)
+    return None
 
 
 def _tax_id(doc):
@@ -263,26 +283,41 @@ def _tax_id(doc):
     return value.strip()
 
 
-def _vendor_name(doc):
-    """-> str; the RAW vendor name, preferred over the pre-normalised field.
+def _vendor_names(doc):
+    """-> (full, core); the two normalised vendor forms.
 
-    `vendor_name_normalized` has already had legal suffixes stripped by
-    documents.py, so two vendors differing only by suffix collapse to the same
-    string there.  Reading the raw name first keeps the suffix-only cap
-    reachable; the normalised field is a fallback when no raw name exists.
+    `core` is the NORMALISED-NAME contract form: NFKD, casefolded,
+    punctuation-folded, `&` -> `and`, and legal suffixes STRIPPED - exactly
+    what documents.normalize_vendor_name produces.  Ordinary fuzzy vendor
+    scoring compares `core` and nothing else, so a legal suffix can never
+    contribute a shared token: "Initech Inc" vs "Initrode Inc" scores
+    precisely as "Initech" vs "Initrode".
+
+    `full` is the same normalisation with the legal suffix RETAINED.  It is
+    used ONLY to tell a suffix-only difference apart from a true identity, so
+    that the suffix-only cap stays reachable; it never feeds a fuzzy metric.
     """
+    raw = ""
     value = doc.get("vendor_name")
     if isinstance(value, str) and value.strip():
-        return value
-    vendor = doc.get("vendor")
-    if isinstance(vendor, dict):
-        value = vendor.get("name")
-        if isinstance(value, str) and value.strip():
-            return value
-    value = doc.get("vendor_name_normalized")
-    if isinstance(value, str) and value.strip():
-        return value
-    return ""
+        raw = value
+    else:
+        vendor = doc.get("vendor")
+        if isinstance(vendor, dict):
+            value = vendor.get("name")
+            if isinstance(value, str) and value.strip():
+                raw = value
+
+    pre = doc.get("vendor_name_normalized")
+    pre_normalized = _normalize_text(pre) if isinstance(pre, str) else ""
+
+    full = _normalize_text(raw) or pre_normalized
+    # The pre-normalised field is authoritative for the core form when it is
+    # present; re-stripping is harmless and covers a field that was not
+    # stripped.  Fall back to the raw name when the field is absent or is
+    # nothing but a legal suffix.
+    core = _strip_legal_suffixes(pre_normalized) or _strip_legal_suffixes(full)
+    return full, core
 
 
 def _issue_date(doc):
@@ -321,23 +356,26 @@ def vendor_similarity(po, invoice):
     if po_tax and inv_tax and po_tax == inv_tax:
         return 1.0
 
-    left = _normalize_text(_vendor_name(po_doc))
-    right = _normalize_text(_vendor_name(inv_doc))
-    if not left or not right:
+    po_full, po_core = _vendor_names(po_doc)
+    inv_full, inv_core = _vendor_names(inv_doc)
+    if not (po_full or po_core) or not (inv_full or inv_core):
         return 0.0
 
-    left_core = _strip_legal_suffixes(left)
-    right_core = _strip_legal_suffixes(right)
-    suffix_only = bool(left_core) and left_core == right_core
-
-    if left == right:
+    if po_full and inv_full and po_full == inv_full:
+        # Identical names, suffix included: a perfect vendor match.
         return 1.0
-    if suffix_only:
-        # Equal only after legal-suffix stripping: near, but never a
-        # suffix-only auto-link.  Checked BEFORE any early 1.0 so that an
-        # already-suffix-stripped name cannot bypass the cap.
+    if po_core and inv_core and po_core == inv_core:
+        # Equal only after legal-suffix stripping (the raw forms differ):
+        # near, but never a suffix-only auto-link.  Checked BEFORE the fuzzy
+        # path so an already-suffix-stripped `vendor_name_normalized` cannot
+        # bypass the cap.
         return SUFFIX_ONLY_CAP
 
+    # Ordinary fuzzy scoring compares the NORMALISED (suffix-stripped) names.
+    left = po_core or po_full
+    right = inv_core or inv_full
+    if left == right:
+        return 1.0
     return _clamp01(_fuzzy_unit(left, right))
 
 
@@ -353,13 +391,13 @@ def match_line_items(po, invoice):
 
     # 1. SKU-exact matches (sku present and equal on both sides).
     for po_index, po_line in enumerate(po_lines):
-        po_sku = _sku(po_line)
-        if not po_sku:
+        po_sku = _sku_key(po_line)
+        if po_sku is None:
             continue
         for inv_index, inv_line in enumerate(inv_lines):
             if inv_index in used_inv:
                 continue
-            if _sku(inv_line) != po_sku:
+            if _sku_key(inv_line) != po_sku:
                 continue
             used_po.add(po_index)
             used_inv.add(inv_index)
