@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime
 import re
 import unicodedata
+from types import MappingProxyType
 
 from rapidfuzz import fuzz
 from rapidfuzz.distance import JaroWinkler
@@ -28,7 +29,23 @@ __all__ = [
     "link_gate",
 ]
 
-WEIGHTS = {"vendor": 0.35, "amount": 0.25, "line_overlap": 0.30, "date": 0.10}
+# The weights are immutable: they are plain float constants, and the public
+# ``WEIGHTS`` mapping is a read-only view over a dict nothing else references.
+# score_pair() reads the constants, never a mutable container, so no module
+# state can change how this module scores.
+_WEIGHT_VENDOR = 0.35
+_WEIGHT_AMOUNT = 0.25
+_WEIGHT_LINE_OVERLAP = 0.30
+_WEIGHT_DATE = 0.10
+
+WEIGHTS = MappingProxyType(
+    {
+        "vendor": _WEIGHT_VENDOR,
+        "amount": _WEIGHT_AMOUNT,
+        "line_overlap": _WEIGHT_LINE_OVERLAP,
+        "date": _WEIGHT_DATE,
+    }
+)
 
 DESCRIPTION_MATCH_THRESHOLD = 0.85
 SUFFIX_ONLY_CAP = 0.95
@@ -75,6 +92,8 @@ _LEGAL_SUFFIXES = frozenset(
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 _MONEY_STRIP = re.compile(r"[^0-9eE+\-.]")
+_DATE_ONLY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DATE_WITH_TIME = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]")
 
 
 # ---------------------------------------------------------------- primitives
@@ -169,13 +188,24 @@ def _to_number(value):
 
 
 def _total_cents(doc):
-    value = doc.get("total_cents")
-    if isinstance(value, bool):
+    """-> int|None.  `total_cents` is AUTHORITATIVE when the key is present.
+
+    A present-but-None (or uncoercible) `total_cents` means "no usable total"
+    and must stay None: reconstructing it from `total` would let a document
+    documents.py already judged totalless open the amount gate.  `total` is
+    consulted only when the `total_cents` key is absent altogether.
+    """
+    if not isinstance(doc, dict):
         return None
-    if isinstance(value, int):
-        return value
-    number = _to_number(value)
-    if number is not None:
+    if "total_cents" in doc:
+        value = doc.get("total_cents")
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        number = _to_number(value)
+        if number is None:
+            return None
         return int(round(number))
     number = _to_number(doc.get("total"))
     if number is None:
@@ -208,12 +238,17 @@ def _line_total(line):
 
 
 def _sku(line):
+    """-> str; an identifier, compared EXACTLY.
+
+    Only surrounding whitespace is trimmed.  Case is significant: SKU `ABC`
+    and SKU `abc` are different identifiers and must not match exactly.
+    """
     value = line.get("sku")
     if value is None:
         return ""
     if not isinstance(value, str):
         value = str(value)
-    return value.strip().casefold()
+    return value.strip()
 
 
 def _tax_id(doc):
@@ -229,15 +264,24 @@ def _tax_id(doc):
 
 
 def _vendor_name(doc):
-    for key in ("vendor_name_normalized", "vendor_name"):
-        value = doc.get(key)
-        if isinstance(value, str) and value.strip():
-            return value
+    """-> str; the RAW vendor name, preferred over the pre-normalised field.
+
+    `vendor_name_normalized` has already had legal suffixes stripped by
+    documents.py, so two vendors differing only by suffix collapse to the same
+    string there.  Reading the raw name first keeps the suffix-only cap
+    reachable; the normalised field is a fallback when no raw name exists.
+    """
+    value = doc.get("vendor_name")
+    if isinstance(value, str) and value.strip():
+        return value
     vendor = doc.get("vendor")
     if isinstance(vendor, dict):
         value = vendor.get("name")
         if isinstance(value, str) and value.strip():
             return value
+    value = doc.get("vendor_name_normalized")
+    if isinstance(value, str) and value.strip():
+        return value
     return ""
 
 
@@ -248,11 +292,20 @@ def _issue_date(doc):
     text = value.strip()
     if not text:
         return None
-    candidate = text.split("T")[0].split(" ")[0]
-    try:
-        return datetime.date.fromisoformat(candidate)
-    except ValueError:
-        return None
+    # The WHOLE string must be a valid date or datetime.  Truncating at the
+    # first "T"/space would accept `2026-01-01Tgarbage` as a real date.
+    if _DATE_ONLY.match(text):
+        try:
+            return datetime.date.fromisoformat(text)
+        except ValueError:
+            return None
+    if _DATE_WITH_TIME.match(text):
+        candidate = text[:-1] + "+00:00" if text[-1] in ("Z", "z") else text
+        try:
+            return datetime.datetime.fromisoformat(candidate).date()
+        except ValueError:
+            return None
+    return None
 
 
 # ------------------------------------------------------------------- public
@@ -272,14 +325,17 @@ def vendor_similarity(po, invoice):
     right = _normalize_text(_vendor_name(inv_doc))
     if not left or not right:
         return 0.0
-    if left == right:
-        return 1.0
 
     left_core = _strip_legal_suffixes(left)
     right_core = _strip_legal_suffixes(right)
-    if left_core and right_core and left_core == right_core:
+    suffix_only = bool(left_core) and left_core == right_core
+
+    if left == right:
+        return 1.0
+    if suffix_only:
         # Equal only after legal-suffix stripping: near, but never a
-        # suffix-only auto-link.
+        # suffix-only auto-link.  Checked BEFORE any early 1.0 so that an
+        # already-suffix-stripped name cannot bypass the cap.
         return SUFFIX_ONLY_CAP
 
     return _clamp01(_fuzzy_unit(left, right))
@@ -473,10 +529,10 @@ def score_pair(po, invoice):
     date = _clamp01(date_similarity(po_doc, inv_doc))
 
     score = (
-        WEIGHTS["vendor"] * vendor
-        + WEIGHTS["amount"] * amount
-        + WEIGHTS["line_overlap"] * line_overlap
-        + WEIGHTS["date"] * date
+        _WEIGHT_VENDOR * vendor
+        + _WEIGHT_AMOUNT * amount
+        + _WEIGHT_LINE_OVERLAP * line_overlap
+        + _WEIGHT_DATE * date
     )
 
     return {

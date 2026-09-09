@@ -542,3 +542,156 @@ def test_public_surface():
     assert sorted(scoring.__all__) == sorted([
         "score_pair", "vendor_similarity", "amount_similarity", "line_containment",
         "date_similarity", "match_line_items", "link_gate"])
+
+
+# ------------------------------------------------- WO-0005 regressions
+#
+# Acme holds TWO purchase orders, so BOTH cross-pairs must score low.
+
+PO_1008 = po_doc(
+    document_number="PO-1008",
+    vendor={"name": "Acme Office Supplies"},
+    vendor_name="Acme Office Supplies",
+    vendor_name_normalized="acme office supplies",
+    issue_date="2026-05-20",
+    total=1296.0,
+    total_cents=129600,
+    line_items=[
+        {"sku": "TNR-BK", "description": "Toner cartridge, black", "quantity": 30,
+         "unit_price": 40.0, "line_total": 1200.0},
+    ],
+)
+
+INV_2001 = inv_doc(
+    document_number="INV-2001",
+    vendor={"name": "Acme Office Supplies"},
+    vendor_name="Acme Office Supplies",
+    vendor_name_normalized="acme office supplies",
+    issue_date="2026-05-11",
+    total=669.6,
+    total_cents=66960,
+    references_po="PO-1001",
+    line_items=[
+        {"sku": "PAP-500", "description": "Copy paper, 500ct case", "quantity": 100,
+         "unit_price": 5.0, "line_total": 500.0},
+        {"sku": "PEN-012", "description": "Ballpoint pens, box of 12", "quantity": 50,
+         "unit_price": 2.0, "line_total": 100.0},
+    ],
+)
+
+
+def test_acme_second_cross_pair_scores_low():
+    """PO-1008 x INV-2001: same vendor, nothing else in common."""
+    assert scoring.match_line_items(PO_1008, INV_2001)["pairs"] == []
+    assert scoring.line_containment(PO_1008, INV_2001, 648) == 0.0
+    result = scoring.score_pair(PO_1008, INV_2001)
+    assert result["components"]["vendor"] == 1.0
+    assert result["components"]["line_overlap"] == 0.0
+    assert result["components"]["amount"] == 0.0
+    assert result["score"] < 0.55
+    components = result["components"]
+    assert scoring.link_gate(PO_1008, INV_2001, components, 648) is False
+
+
+def test_acme_both_cross_pairs_score_below_their_true_pairs():
+    cross_a = scoring.score_pair(PO_1001, INV_2009)["score"]
+    cross_b = scoring.score_pair(PO_1008, INV_2001)["score"]
+    true_pair = scoring.score_pair(PO_1008, INV_2009)["score"]
+    assert cross_a < 0.55
+    assert cross_b < 0.55
+    assert true_pair >= 0.80
+    assert true_pair > max(cross_a, cross_b)
+
+
+def test_suffix_only_cap_survives_prenormalised_vendor_names():
+    """A pre-stripped `vendor_name_normalized` must not bypass the cap."""
+    po = po_doc(vendor={"name": "Globex Corporation"},
+                vendor_name="Globex Corporation",
+                vendor_name_normalized="globex")
+    inv = inv_doc(vendor={"name": "Globex Corp"},
+                  vendor_name="Globex Corp",
+                  vendor_name_normalized="globex")
+    value = scoring.vendor_similarity(po, inv)
+    assert value == pytest.approx(0.95)
+    assert value <= 0.95
+    assert scoring.score_pair(po, inv)["components"]["vendor"] <= 0.95
+    # Identical raw names remain a perfect vendor match.
+    assert scoring.vendor_similarity(PO_1002, INV_2003) == 1.0
+
+
+def test_none_total_cents_never_reopens_the_amount_gate():
+    """An explicit `total_cents: None` means "no total", not "derive from total"."""
+    po = {"total_cents": None, "total": 100, "line_items": [],
+          "vendor_name": "Globex Corp", "issue_date": "2026-05-04"}
+    inv = {"total_cents": 10000, "total": 100, "line_items": [],
+           "vendor_name": "Globex Corp", "issue_date": "2026-05-18"}
+    assert scoring.amount_similarity(po, inv, 1) == 0.0
+    assert scoring.line_containment(po, inv, 1) == 0.0
+    components = scoring.score_pair(po, inv)["components"]
+    assert components["amount"] == 0.0
+    assert scoring.link_gate(po, inv, components, 100000) is False
+    # Symmetrically on the invoice side.
+    assert scoring.amount_similarity(inv, {"total_cents": None, "total": 100}, 1) == 0.0
+    # A missing key may still fall back to `total`.
+    assert scoring.amount_similarity(
+        {"total": 100.0, "line_items": []}, {"total": 100.0, "line_items": []}, 50
+    ) == 1.0
+
+
+def test_weights_are_not_mutable_global_state():
+    baseline = scoring.score_pair(PO_1002, INV_2003)
+    with pytest.raises(TypeError):
+        scoring.WEIGHTS["vendor"] = 0.99
+    with pytest.raises((TypeError, AttributeError)):
+        scoring.WEIGHTS.clear()
+    assert scoring.score_pair(PO_1002, INV_2003) == baseline
+    assert scoring.WEIGHTS == {"vendor": 0.35, "amount": 0.25,
+                               "line_overlap": 0.30, "date": 0.10}
+
+
+def test_sku_equality_is_case_sensitive():
+    po = po_doc(line_items=[
+        {"sku": "ABC", "description": "Alpha widget, boxed", "quantity": 1,
+         "unit_price": 100.0, "line_total": 100.0}])
+    inv = inv_doc(line_items=[
+        {"sku": "abc", "description": "Zeta gizmo, crated", "quantity": 1,
+         "unit_price": 100.0, "line_total": 100.0}])
+    result = scoring.match_line_items(po, inv)
+    assert result["pairs"] == []
+    assert result["unmatched_po_indexes"] == [0]
+    assert result["unmatched_invoice_indexes"] == [0]
+    assert scoring.score_pair(po, inv)["components"]["line_overlap"] == 0.0
+    # Identical SKUs still match exactly.
+    same = inv_doc(line_items=[
+        {"sku": "ABC", "description": "Zeta gizmo, crated", "quantity": 1,
+         "unit_price": 100.0, "line_total": 100.0}])
+    assert scoring.match_line_items(po, same)["pairs"] == [
+        {"po_index": 0, "invoice_index": 0, "similarity": 1.0}]
+
+
+@pytest.mark.parametrize("bad", [
+    "2026-01-01Tgarbage",
+    "2026-01-01 garbage",
+    "2026-01-01T",
+    "2026-01-01T12:00:00garbage",
+    "2026-01-01T99:99:99",
+    "2026-13-45",
+    "2026-01-01/2026-02-01",
+])
+def test_malformed_dates_score_zero(bad):
+    assert scoring.date_similarity(po_doc(issue_date=bad), inv_doc()) == 0.0
+    assert scoring.date_similarity(po_doc(), inv_doc(issue_date=bad)) == 0.0
+    assert scoring.score_pair(po_doc(issue_date=bad), inv_doc())["components"][
+        "date"] == 0.0
+
+
+@pytest.mark.parametrize("good", [
+    "2026-05-04",
+    "2026-05-04T09:30:00",
+    "2026-05-04 09:30:00",
+    "2026-05-04T09:30:00Z",
+    "2026-05-04T09:30:00+00:00",
+])
+def test_wellformed_timestamps_still_parse(good):
+    assert scoring.date_similarity(po_doc(issue_date=good),
+                                   inv_doc(issue_date="2026-05-18")) == 1.0
