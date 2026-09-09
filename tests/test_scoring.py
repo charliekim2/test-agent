@@ -695,3 +695,166 @@ def test_malformed_dates_score_zero(bad):
 def test_wellformed_timestamps_still_parse(good):
     assert scoring.date_similarity(po_doc(issue_date=good),
                                    inv_doc(issue_date="2026-05-18")) == 1.0
+
+
+# ------------------------------------------------------------------------
+# WO-0008: regressions for the blocking review findings on WO-0005.
+# ------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "with_suffix_a,with_suffix_b,bare_a,bare_b",
+    [
+        ("Initech Inc", "Initrode Inc", "Initech", "Initrode"),
+        ("Initech Incorporated", "Initrode Inc.", "Initech", "Initrode"),
+        (
+            "Acme Office Supplies Ltd",
+            "Acme Industrial Coatings Ltd",
+            "Acme Office Supplies",
+            "Acme Industrial Coatings",
+        ),
+        (
+            "Umbrella Industries GmbH",
+            "Stark Industrial GmbH",
+            "Umbrella Industries",
+            "Stark Industrial",
+        ),
+        ("Wayne Ent. LLC", "Wayne Holdings LLC", "Wayne Ent.", "Wayne Holdings"),
+    ],
+)
+def test_legal_suffix_never_inflates_ordinary_vendor_fuzzy_scoring(
+    with_suffix_a, with_suffix_b, bare_a, bare_b
+):
+    """Fuzzy vendor scoring compares the NORMALISED (suffix-stripped) names.
+
+    A shared legal suffix is not evidence that two vendors are the same, so it
+    must contribute nothing: the score of a pair carrying suffixes has to equal
+    the score of the same pair without them.
+    """
+    with_suffix = scoring.vendor_similarity(with_suffix_a, with_suffix_b)
+    bare = scoring.vendor_similarity(bare_a, bare_b)
+    assert with_suffix == pytest.approx(bare), (
+        "%r vs %r scored %r but %r vs %r scored %r (rapidfuzz %s)"
+        % (with_suffix_a, with_suffix_b, with_suffix, bare_a, bare_b, bare, VERSION)
+    )
+    assert 0.0 <= with_suffix < 0.85
+
+
+def test_suffix_tokens_do_not_inflate_vendor_scoring_on_documents():
+    """Same finding, reached through real document dicts rather than strings."""
+    po = po_doc(
+        vendor={"name": "Initech Incorporated"},
+        vendor_name="Initech Incorporated",
+        vendor_name_normalized="initech",
+    )
+    inv = inv_doc(
+        vendor={"name": "Initrode Incorporated"},
+        vendor_name="Initrode Incorporated",
+        vendor_name_normalized="initrode",
+    )
+    value = scoring.vendor_similarity(po, inv)
+    assert value == pytest.approx(scoring.vendor_similarity("Initech", "Initrode"))
+    assert value < 0.85
+    assert scoring.score_pair(po, inv)["components"]["vendor"] == round(value, 4)
+
+
+def test_suffix_stripping_still_leaves_true_matches_and_the_cap_intact():
+    """The fix must not disturb behaviour the contract pins."""
+    assert scoring.vendor_similarity("globex corporation", "globex corp") == pytest.approx(
+        0.95
+    )
+    assert scoring.vendor_similarity("Smith & Sons", "Smith and Sons") >= 0.95
+    assert scoring.vendor_similarity("globex", "globex") == 1.0
+    assert scoring.vendor_similarity(PO_1002, INV_2003) == 1.0
+    assert scoring.vendor_similarity({}, {}) == 0.0
+
+
+def _sku_pair_docs(po_sku, inv_sku):
+    """Two one-line docs whose DESCRIPTIONS are nowhere near similar.
+
+    Any pair produced can therefore only come from the SKU-exact stage.
+    """
+    po = po_doc(line_items=[
+        {"sku": po_sku, "description": "Alpha widget, boxed", "quantity": 1,
+         "unit_price": 100.0, "line_total": 100.0}])
+    inv = inv_doc(line_items=[
+        {"sku": inv_sku, "description": "Zeta gizmo, crated", "quantity": 1,
+         "unit_price": 100.0, "line_total": 100.0}])
+    return po, inv
+
+
+@pytest.mark.parametrize("po_sku,inv_sku", [
+    ("ABC ", "ABC"),
+    ("ABC", "ABC "),
+    (" ABC", "ABC"),
+    ("A BC", "ABC"),
+    ("\tABC", "ABC"),
+    ("ABC\n", "ABC"),
+])
+def test_sku_exact_match_does_not_trim_whitespace(po_sku, inv_sku):
+    """Whitespace trimming must not forge an exact match between unequal ids."""
+    po, inv = _sku_pair_docs(po_sku, inv_sku)
+    result = scoring.match_line_items(po, inv)
+    assert result["pairs"] == [], "%r matched %r" % (po_sku, inv_sku)
+    assert result["unmatched_po_indexes"] == [0]
+    assert result["unmatched_invoice_indexes"] == [0]
+    assert scoring.score_pair(po, inv)["components"]["line_overlap"] == 0.0
+
+
+@pytest.mark.parametrize("po_sku,inv_sku", [
+    (12345, "12345"),
+    ("12345", 12345),
+    (12345, 12345.0),
+    (12345.0, "12345.0"),
+    (True, "True"),
+    (True, 1),
+    (None, "None"),
+    (("A",), "('A',)"),
+])
+def test_sku_exact_match_does_not_coerce_to_string(po_sku, inv_sku):
+    """str() coercion must not forge an exact match between unequal ids."""
+    po, inv = _sku_pair_docs(po_sku, inv_sku)
+    result = scoring.match_line_items(po, inv)
+    assert result["pairs"] == [], "%r matched %r" % (po_sku, inv_sku)
+    assert result["unmatched_invoice_indexes"] == [0]
+    assert scoring.score_pair(po, inv)["components"]["line_overlap"] == 0.0
+
+
+@pytest.mark.parametrize("blank", ["", " ", "   ", "\t", "\n", None])
+def test_blank_or_absent_sku_is_not_an_identifier(blank):
+    """A blank SKU on both sides is not an exact match; it is no identifier."""
+    po, inv = _sku_pair_docs(blank, blank)
+    result = scoring.match_line_items(po, inv)
+    assert result["pairs"] == []
+    assert result["unmatched_po_indexes"] == [0]
+    assert result["unmatched_invoice_indexes"] == [0]
+    # A missing `sku` key behaves the same way.
+    po_missing = po_doc(line_items=[
+        {"description": "Alpha widget, boxed", "quantity": 1,
+         "unit_price": 100.0, "line_total": 100.0}])
+    inv_missing = inv_doc(line_items=[
+        {"description": "Zeta gizmo, crated", "quantity": 1,
+         "unit_price": 100.0, "line_total": 100.0}])
+    assert scoring.match_line_items(po_missing, inv_missing)["pairs"] == []
+
+
+@pytest.mark.parametrize("sku", ["ABC", "BRK-01", "ABC ", " ", 12345, 12345.0])
+def test_identical_sku_values_of_the_same_type_still_match_exactly(sku):
+    """The fix must not break the exact matches the contract depends on."""
+    po, inv = _sku_pair_docs(sku, sku)
+    result = scoring.match_line_items(po, inv)
+    if isinstance(sku, str) and not sku.strip():
+        assert result["pairs"] == []          # blank: no identifier at all
+    else:
+        assert result["pairs"] == [
+            {"po_index": 0, "invoice_index": 0, "similarity": 1.0}]
+        assert scoring.score_pair(po, inv)["components"]["line_overlap"] == 1.0
+
+
+def test_sku_worked_example_line_matching_is_unchanged():
+    assert scoring.match_line_items(PO_1002, INV_2003) == {
+        "pairs": [{"po_index": 1, "invoice_index": 0, "similarity": 1.0}],
+        "unmatched_po_indexes": [0],
+        "unmatched_invoice_indexes": [],
+    }
+    assert scoring.score_pair(PO_1002, INV_2003)["score"] == 0.9792
