@@ -523,6 +523,48 @@ def _collect(docs, exceptions, is_po):
     return unique
 
 
+def _default_tolerance_pct():
+    """The tolerance fraction `scoring.score_pair` applies internally."""
+    try:
+        return float(getattr(scoring, "TOLERANCE_PCT", 0.005))
+    except (TypeError, ValueError):
+        return 0.005
+
+
+def _score_pair(po, invoice, tolerance, line_match):
+    """`scoring.score_pair` with the CALLER's tolerance honoured.
+
+    `scoring.score_pair(po, invoice)` takes no tolerance parameter and applies
+    the module default internally, so an overridden `tolerance_pct` would reach
+    only the hard gate and the set-level reconciliation - never the pairwise
+    `amount` component, leaving score, band and assignment computed at the
+    default tolerance.  Only the tolerance-bearing `amount` component is
+    recomputed here, and only when the caller's tolerance actually differs from
+    the default `score_pair` already used; every similarity signal still comes
+    from `scoring` (no forked logic, same weights).
+
+    -> (score, components dict)
+    """
+    result = scoring.score_pair(po, invoice)
+    raw_components = result.get("components") or {}
+    components = {
+        name: _score(raw_components.get(name))
+        for name in ("vendor", "amount", "line_overlap", "date")
+    }
+    score = _score(result.get("score"))
+
+    default_tolerance = _tolerance_cents(_total_cents(po), _default_tolerance_pct())
+    if tolerance == default_tolerance:
+        # Nothing to correct: score_pair already used exactly this tolerance.
+        return score, components
+
+    components["amount"] = _score(
+        scoring.amount_similarity(po, invoice, tolerance, line_match)
+    )
+    total = sum(WEIGHTS[name] * components[name] for name in WEIGHTS)
+    return _score(total), components
+
+
 def _build_pairs(po_docs, invoice_docs, tolerance_pct, exceptions):
     entries = []
     po_by_reference = {}
@@ -551,13 +593,8 @@ def _build_pairs(po_docs, invoice_docs, tolerance_pct, exceptions):
         tolerance = _tolerance_cents(po_cents, tolerance_pct)
         for invoice in invoice_docs:
             invoice_number = _identity(invoice)
-            result = scoring.score_pair(po, invoice)
-            raw_components = result.get("components") or {}
-            components = {
-                name: _score(raw_components.get(name))
-                for name in ("vendor", "amount", "line_overlap", "date")
-            }
-            score = _score(result.get("score"))
+            line_match = scoring.match_line_items(po, invoice)
+            score, components = _score_pair(po, invoice, tolerance, line_match)
             gated = bool(scoring.link_gate(po, invoice, components, tolerance))
             excluded_by = None
 
@@ -634,7 +671,7 @@ def _build_pairs(po_docs, invoice_docs, tolerance_pct, exceptions):
                     "components": components,
                     "gated": gated,
                     "excluded_by": excluded_by,
-                    "line_match": scoring.match_line_items(po, invoice),
+                    "line_match": line_match,
                     "referenced": references_this_po,
                 }
             )
