@@ -14,6 +14,7 @@ document.
 Stdlib only.
 """
 
+import datetime
 import json
 import os
 import re
@@ -48,7 +49,12 @@ def normalize_money(value):
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        # A Python int can be arbitrarily large; float() raises OverflowError
+        # for such values.  Coercion failures must never escape this module.
+        try:
+            return float(value)
+        except (OverflowError, ValueError):
+            return None
     if isinstance(value, str):
         s = value.strip()
         if not s:
@@ -58,7 +64,7 @@ def normalize_money(value):
             return None
         try:
             return float(cleaned)
-        except ValueError:
+        except (ValueError, OverflowError):
             return None
     return None
 
@@ -74,7 +80,10 @@ def to_cents(value):
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        d = Decimal(str(value))
+        try:
+            d = Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            return None
     elif isinstance(value, str):
         s = value.strip()
         if not s:
@@ -90,18 +99,24 @@ def to_cents(value):
         return None
     try:
         cents = (d * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    except InvalidOperation:
+    except (InvalidOperation, ValueError, OverflowError):
         return None
-    return int(cents)
+    try:
+        return int(cents)
+    except (ValueError, OverflowError):
+        return None
 
 
 # ---------------------------------------------------------------------------
 # Vendor name normalisation
 # ---------------------------------------------------------------------------
 
+# Applied AFTER punctuation has been stripped and whitespace collapsed, so the
+# alternatives are spelled without punctuation and tolerate the single spaces
+# that punctuation removal leaves behind ("l.l.c." -> "l l c").
 _LEGAL_SUFFIX_RE = re.compile(
-    r"\b(?:inc\.?|incorporated|l\.l\.c\.?|llc|ltd\.?|limited|"
-    r"corp\.?|corporation|co\.?|company|plc|gmbh|ag|sa|bv|nv|pty)\s*$"
+    r"\s*\b(?:inc|incorporated|l\s*l\s*c|llc|ltd|limited|"
+    r"corp|corporation|co|company|plc|gmbh|ag|s\s*a|bv|nv|pty)$"
 )
 
 
@@ -118,14 +133,21 @@ def normalize_vendor_name(s):
     s = unicodedata.normalize("NFKD", str(s))
     s = "".join(ch for ch in s if not unicodedata.combining(ch))
     s = s.casefold()
-    s = s.replace("&", "and")
+    s = s.replace("&", " and ")
+    # Punctuation first, THEN whitespace collapse, THEN legal-suffix removal:
+    # doing it in any other order makes equivalent legal-form spellings
+    # ("Globex (LLC)" vs "Globex Corp") produce different comparison keys.
+    s = re.sub(r"[^\w\s]", " ", s, flags=re.UNICODE)
+    s = re.sub(r"\s+", " ", s).strip()
     # Remove stacked trailing legal-form suffixes (e.g. "Globex Corp Ltd").
     previous = None
     while previous != s:
         previous = s
-        s = _LEGAL_SUFFIX_RE.sub("", s)
-    s = re.sub(r"[^\w\s]", " ", s, flags=re.UNICODE)
-    s = re.sub(r"\s+", " ", s).strip()
+        candidate = _LEGAL_SUFFIX_RE.sub("", s)
+        candidate = re.sub(r"\s+", " ", candidate).strip()
+        # Never reduce a name to nothing (a vendor literally called "LLC").
+        if candidate:
+            s = candidate
     return s
 
 
@@ -138,6 +160,33 @@ def _is_number(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
+_DATE_FORMATS = ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%b-%Y", "%d %b %Y", "%B %d %Y")
+
+
+def _looks_like_date(s):
+    """True when `s` (a str) parses as a calendar date in a common format."""
+    text = s.strip()
+    if not text:
+        return False
+    try:
+        datetime.date.fromisoformat(text)
+        return True
+    except ValueError:
+        pass
+    try:
+        datetime.datetime.fromisoformat(text)
+        return True
+    except ValueError:
+        pass
+    for fmt in _DATE_FORMATS:
+        try:
+            datetime.datetime.strptime(text, fmt)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
 def _coerce_number(v):
     """Best-effort numeric coercion (returns None when impossible)."""
     if isinstance(v, bool):
@@ -145,7 +194,7 @@ def _coerce_number(v):
     if isinstance(v, int):
         return v
     if isinstance(v, float):
-        return int(v) if v.is_integer() else v
+        return v
     if isinstance(v, str):
         f = normalize_money(v)
         if f is None:
@@ -159,7 +208,8 @@ def _zero_default(value):
     if value is None or isinstance(value, bool):
         return 0
     if isinstance(value, (int, float)):
-        return float(value)
+        f = normalize_money(value)
+        return f if f is not None else 0
     if isinstance(value, str):
         f = normalize_money(value)
         return f if f is not None else 0
@@ -193,6 +243,15 @@ def _process_document(raw, rel_path, document_type, number_key):
     """Normalise one parsed document.  Returns (doc, problems)."""
     problems = []
 
+    # -- document type (a required field in its own right) -------------------
+    raw_type = raw.get("document_type")
+    if "document_type" not in raw or raw_type is None:
+        problems.append("missing required field: document_type")
+    elif not isinstance(raw_type, str):
+        problems.append("field 'document_type' is not a string")
+    elif raw_type.strip().casefold() not in ("purchase_order", "invoice"):
+        problems.append("field 'document_type' has unexpected value: %r" % (raw_type,))
+
     # -- document number -----------------------------------------------------
     number = raw.get(number_key)
     if number is None:
@@ -212,13 +271,23 @@ def _process_document(raw, rel_path, document_type, number_key):
         vendor_name = None
     else:
         vendor_name = vendor.get("name")
-        if not isinstance(vendor_name, str) or not vendor_name:
+        if vendor_name is None:
+            problems.append("missing required field: vendor.name")
+        elif not isinstance(vendor_name, str):
+            problems.append("field 'vendor.name' is not a string")
+            vendor_name = None
+        elif not vendor_name.strip():
             problems.append("missing required field: vendor.name")
             vendor_name = None
 
     # -- currency ------------------------------------------------------------
     currency = raw.get("currency")
-    if not isinstance(currency, str) or not currency:
+    if currency is None:
+        problems.append("missing required field: currency")
+    elif not isinstance(currency, str):
+        problems.append("field 'currency' is not a string")
+        currency = None
+    elif not currency.strip():
         problems.append("missing required field: currency")
         currency = None
 
@@ -226,15 +295,24 @@ def _process_document(raw, rel_path, document_type, number_key):
     issue_date = raw.get("issue_date")
     if issue_date is None:
         problems.append("missing required field: issue_date")
+    elif not isinstance(issue_date, str):
+        problems.append("field 'issue_date' is not a string")
+    elif not _looks_like_date(issue_date):
+        problems.append("field 'issue_date' is not a valid date: %r" % (issue_date,))
 
     # -- totals --------------------------------------------------------------
     total_raw = raw.get("total")
+    total = normalize_money(total_raw)
     if total_raw is None:
         problems.append("missing required field: total")
-    if isinstance(total_raw, bool) or isinstance(total_raw, str):
+    elif not _is_number(total_raw):
+        # bool, str, list, dict, ... - reported whether or not it is coercible.
         problems.append("field 'total' is not numeric")
-    total = normalize_money(total_raw)
-    total_cents = to_cents(total)
+    elif total is None:
+        problems.append("field 'total' is not numeric")
+    # Cents come from the RAW value where possible (Decimal on the original
+    # string), never from binary float arithmetic.
+    total_cents = to_cents(total_raw) if total is not None else None
 
     subtotal = _zero_default(raw.get("subtotal"))
     shipping = _zero_default(raw.get("shipping"))
@@ -258,21 +336,31 @@ def _process_document(raw, rel_path, document_type, number_key):
                 continue
             new_line = dict(line)
             for key in ("description", "quantity", "unit_price", "line_total"):
-                if key not in line:
+                if key not in line or line[key] is None:
                     problems.append("line item %d missing required field: %s" % (i, key))
+            # description and sku are strings; a non-string value is a
+            # violation and is coerced to its string form for downstream use.
+            for key in ("description", "sku"):
+                value = line.get(key)
+                if key in line and value is not None and not isinstance(value, str):
+                    problems.append("line item %d field %r is not a string" % (i, key))
+                    new_line[key] = str(value)
             for key in ("quantity", "unit_price", "line_total"):
-                if key in line and not _is_number(line[key]):
-                    problems.append("line item %d field %r is not numeric" % (i, key))
-            for key in ("quantity", "unit_price", "line_total"):
-                if key in line:
-                    coerced = _coerce_number(line[key])
-                    if coerced is not None:
-                        new_line[key] = coerced
+                if key not in line or line[key] is None:
+                    continue
+                value = line[key]
+                if _is_number(value):
+                    continue
+                problems.append("line item %d field %r is not numeric" % (i, key))
+                coerced = _coerce_number(value)
+                if coerced is not None:
+                    new_line[key] = coerced
             line_items.append(new_line)
 
     # -- references (a hint, never ground truth) -----------------------------
     references_po = raw.get("references_po")
     if references_po is not None and not isinstance(references_po, str):
+        problems.append("field 'references_po' is not a string")
         references_po = str(references_po)
 
     vendor_name_normalized = normalize_vendor_name(vendor_name) if vendor_name else ""
@@ -340,11 +428,16 @@ def load_documents(data_dir):
             try:
                 with open(full_path, "r", encoding="utf-8") as fh:
                     raw = json.load(fh)
-            except (json.JSONDecodeError, OSError, UnicodeDecodeError, ValueError) as exc:
-                malformed.append({"path": rel_posix, "error": str(exc)})
+            except Exception as exc:
+                # json.JSONDecodeError, OSError, UnicodeDecodeError, RecursionError...
+                malformed.append({"path": rel_posix, "error": str(exc) or exc.__class__.__name__})
                 continue
 
-            document_type, number_key = _classify(raw)
+            try:
+                document_type, number_key = _classify(raw)
+            except Exception as exc:  # pragma: no cover - defensive
+                malformed.append({"path": rel_posix, "error": str(exc) or exc.__class__.__name__})
+                continue
             if document_type is None:
                 # Valid JSON but not a usable document: no type and no number
                 # (or not a dict at all).  It is not a PO, not an invoice, and
@@ -358,7 +451,20 @@ def load_documents(data_dir):
                 )
                 continue
 
-            doc, problems = _process_document(raw, rel_posix, document_type, number_key)
+            # Normalisation runs inside the per-file guard too: a coercion
+            # failure on ONE document must never abort the load and lose every
+            # other document.
+            try:
+                doc, problems = _process_document(raw, rel_posix, document_type, number_key)
+            except Exception as exc:
+                malformed.append(
+                    {
+                        "path": rel_posix,
+                        "error": "failed to normalise document: %s"
+                        % (str(exc) or exc.__class__.__name__),
+                    }
+                )
+                continue
             if document_type == "purchase_order":
                 purchase_orders.append(doc)
             else:

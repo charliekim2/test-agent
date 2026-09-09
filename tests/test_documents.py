@@ -338,6 +338,198 @@ def test_deterministic_and_documented_keys(tmp_path):
             json.dumps(doc)
 
 
+# ---------------------------------------------------------------------------
+# Regression: normalisation errors never abort the load (WO-0004)
+# ---------------------------------------------------------------------------
+
+
+def test_uncoercible_number_does_not_abort_the_whole_load(tmp_path):
+    # A JSON integer far outside float range: float() raises OverflowError.
+    huge = "1" + "0" * 400
+    (tmp_path / "huge.json").write_text(
+        '{"document_type": "invoice", "invoice_number": "INV-9",'
+        ' "vendor": {"name": "Globex"}, "currency": "USD",'
+        ' "issue_date": "2026-05-04", "line_items": [], "total": %s,'
+        ' "tax": %s}' % (huge, huge),
+        encoding="utf-8",
+    )
+    (tmp_path / "good.json").write_text(json.dumps(_po()), encoding="utf-8")
+
+    result = load_documents(str(tmp_path))
+
+    # The good document survives - the whole point of per-file isolation.
+    assert [p["document_number"] for p in result["purchase_orders"]] == ["PO-1002"]
+    # The pathological one is retained (or at worst recorded), never raised.
+    numbers = [i["document_number"] for i in result["invoices"]]
+    paths = {m["path"] for m in result["malformed"]}
+    assert "INV-9" in numbers or "huge.json" in paths
+    json.dumps(result)
+
+
+def test_helpers_never_raise_on_out_of_range_numbers():
+    huge = 10 ** 400
+    assert normalize_money(huge) is None
+    assert to_cents(huge) is None
+    assert to_cents(float("inf")) is None
+    assert to_cents(float("nan")) is None
+
+
+def test_unexpected_normalisation_error_is_isolated(tmp_path, monkeypatch):
+    import documents as documents_module
+
+    (tmp_path / "boom.json").write_text(json.dumps(_inv()), encoding="utf-8")
+    (tmp_path / "good.json").write_text(json.dumps(_po()), encoding="utf-8")
+
+    original = documents_module._process_document
+
+    def exploding(raw, rel_path, document_type, number_key):
+        if rel_path == "boom.json":
+            raise RuntimeError("kaboom")
+        return original(raw, rel_path, document_type, number_key)
+
+    monkeypatch.setattr(documents_module, "_process_document", exploding)
+
+    result = documents_module.load_documents(str(tmp_path))
+
+    # One exploding document must not lose the others, and must not escape.
+    assert [p["document_number"] for p in result["purchase_orders"]] == ["PO-1002"]
+    assert result["invoices"] == []
+    assert [m["path"] for m in result["malformed"]] == ["boom.json"]
+    assert "kaboom" in result["malformed"][0]["error"]
+    json.dumps(result)
+
+
+# ---------------------------------------------------------------------------
+# Regression: punctuation is stripped BEFORE legal suffixes (WO-0004)
+# ---------------------------------------------------------------------------
+
+
+def test_punctuation_stripped_before_legal_suffix_removal():
+    base = normalize_vendor_name("Globex")
+    # Punctuation that trails the legal form used to block suffix removal.
+    assert normalize_vendor_name("Globex (LLC)") == base
+    assert normalize_vendor_name("Globex, Inc.") == base
+    assert normalize_vendor_name("Globex Corp.,") == base
+    assert normalize_vendor_name("Globex [Ltd.]") == base
+    assert normalize_vendor_name("Globex L.L.C.") == base
+    assert normalize_vendor_name("Globex Corp Ltd") == base
+    # And the ampersand form survives punctuation stripping without gluing
+    # tokens together.
+    assert normalize_vendor_name("Smith&Sons") == normalize_vendor_name("Smith and Sons")
+    assert normalize_vendor_name("Smith & Sons, Inc.") == normalize_vendor_name("Smith and Sons")
+    # Distinguishing words are still never removed.
+    assert normalize_vendor_name("Acme Office Supplies, Inc.") != normalize_vendor_name(
+        "Acme Industrial Coatings Inc"
+    )
+    # A vendor literally named after a legal form is not reduced to nothing.
+    assert normalize_vendor_name("LLC") != ""
+
+
+# ---------------------------------------------------------------------------
+# Regression: wrong field types are reported (WO-0004)
+# ---------------------------------------------------------------------------
+
+
+def test_non_string_issue_date_is_reported(tmp_path):
+    (tmp_path / "p.json").write_text(json.dumps(_po(issue_date=20260504)), encoding="utf-8")
+    (tmp_path / "q.json").write_text(
+        json.dumps(_po(po_number="PO-1003", issue_date="not a date")), encoding="utf-8"
+    )
+    result = load_documents(str(tmp_path))
+    assert len(result["purchase_orders"]) == 2
+    by_path = {v["path"]: v for v in result["schema_violations"]}
+    assert any("issue_date" in p for p in by_path["p.json"]["problems"])
+    assert any("issue_date" in p for p in by_path["q.json"]["problems"])
+
+
+def test_non_numeric_total_shapes_are_reported(tmp_path):
+    (tmp_path / "a.json").write_text(json.dumps(_po(total={"amount": 10})), encoding="utf-8")
+    (tmp_path / "b.json").write_text(
+        json.dumps(_po(po_number="PO-2", total=[432.0])), encoding="utf-8"
+    )
+    (tmp_path / "c.json").write_text(
+        json.dumps(_po(po_number="PO-3", total=True)), encoding="utf-8"
+    )
+    result = load_documents(str(tmp_path))
+    assert len(result["purchase_orders"]) == 3
+    by_path = {v["path"]: v for v in result["schema_violations"]}
+    for name in ("a.json", "b.json", "c.json"):
+        assert any("total" in p for p in by_path[name]["problems"]), name
+    for doc in result["purchase_orders"]:
+        assert doc["total"] is None
+        assert doc["total_cents"] is None
+
+
+def test_non_string_line_description_is_reported(tmp_path):
+    line = {
+        "sku": 12345,
+        "description": 42,
+        "quantity": 2,
+        "unit_price": 3.0,
+        "line_total": 6.0,
+    }
+    (tmp_path / "p.json").write_text(json.dumps(_po(line_items=[line])), encoding="utf-8")
+    result = load_documents(str(tmp_path))
+    (violation,) = result["schema_violations"]
+    assert any("description" in p for p in violation["problems"])
+    assert any("sku" in p for p in violation["problems"])
+    # Retained and coerced to a usable string form for downstream matching.
+    stored = result["purchase_orders"][0]["line_items"][0]
+    assert stored["description"] == "42"
+    assert stored["sku"] == "12345"
+
+
+def test_valid_numeric_line_values_are_not_mangled(tmp_path):
+    (tmp_path / "p.json").write_text(json.dumps(_po()), encoding="utf-8")
+    line = load_documents(str(tmp_path))["purchase_orders"][0]["line_items"][0]
+    assert line["quantity"] == 100
+    assert line["unit_price"] == 4.00
+    assert line["line_total"] == 400.00
+
+
+# ---------------------------------------------------------------------------
+# Regression: document_type is a required field and must be validated (WO-0004)
+# ---------------------------------------------------------------------------
+
+
+def test_missing_document_type_is_reported(tmp_path):
+    doc = _po()
+    del doc["document_type"]
+    (tmp_path / "p.json").write_text(json.dumps(doc), encoding="utf-8")
+    result = load_documents(str(tmp_path))
+    # Still classified from po_number and still retained ...
+    assert [p["document_number"] for p in result["purchase_orders"]] == ["PO-1002"]
+    # ... but the missing required field IS reported.
+    (violation,) = result["schema_violations"]
+    assert any("document_type" in p for p in violation["problems"])
+
+
+def test_non_string_document_type_is_reported(tmp_path):
+    (tmp_path / "p.json").write_text(json.dumps(_po(document_type=7)), encoding="utf-8")
+    (tmp_path / "q.json").write_text(
+        json.dumps(_inv(invoice_number="INV-2011", document_type=None)), encoding="utf-8"
+    )
+    result = load_documents(str(tmp_path))
+    assert [p["document_number"] for p in result["purchase_orders"]] == ["PO-1002"]
+    assert [i["document_number"] for i in result["invoices"]] == ["INV-2011"]
+    by_path = {v["path"]: v for v in result["schema_violations"]}
+    assert any("document_type" in p for p in by_path["p.json"]["problems"])
+    assert any("document_type" in p for p in by_path["q.json"]["problems"])
+
+
+def test_unexpected_document_type_value_is_reported(tmp_path):
+    (tmp_path / "p.json").write_text(json.dumps(_po(document_type="PO")), encoding="utf-8")
+    result = load_documents(str(tmp_path))
+    assert [p["document_number"] for p in result["purchase_orders"]] == ["PO-1002"]
+    (violation,) = result["schema_violations"]
+    assert any("document_type" in p for p in violation["problems"])
+
+
+def test_well_formed_document_has_no_violations(tmp_path):
+    (tmp_path / "p.json").write_text(json.dumps(_po()), encoding="utf-8")
+    assert load_documents(str(tmp_path))["schema_violations"] == []
+
+
 def test_one_bad_file_does_not_abort_load(tmp_path):
     (tmp_path / "good.json").write_text(json.dumps(_po()), encoding="utf-8")
     (tmp_path / "bad.json").write_text('{"document_type": "invoice", ', encoding="utf-8")
