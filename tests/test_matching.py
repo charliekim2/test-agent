@@ -541,3 +541,94 @@ def test_threshold_overrides_are_echoed_and_honoured(tmp_path):
     loose = matching.match_documents(str(tmp_path), tolerance_pct=0.05)
     assert link_for(loose, "PO-1")["fulfilment"] == "complete"
     assert "PARTIAL_FULFILMENT" not in exception_types(loose, po_number="PO-1")
+
+
+# ------------------------------------------- tolerance reaches the SCORE too
+
+
+def candidate_for(result, po_number, invoice_number):
+    for entry in result["candidates"]:
+        if (entry["po_number"] == po_number
+                and entry["invoice_number"] == invoice_number):
+            return entry
+    raise AssertionError(
+        "no candidate %s/%s: %r" % (po_number, invoice_number, result["candidates"]))
+
+
+def _over_billed_corpus(tmp_path):
+    """PO 1000.00 (one line) vs INV 2000.00 (same SKU, double quantity).
+
+    Vendor 1.0, line_overlap 1.0, containment 1.0, date 0.2 (310 days), so the
+    pairwise score is driven entirely by the `amount` component: 0.5 at the
+    default 0.5% tolerance, 1.0 once the excess fits inside the tolerance.
+    """
+    write(tmp_path, "po.json", po(
+        "PO-1", "Globex Corporation", "2026-01-01", 1000.00,
+        [line("WID-A", "Widget A", 1, 1000.00)]))
+    write(tmp_path, "inv.json", inv(
+        "INV-1", "Globex Corporation", "2026-11-07", 2000.00,
+        [line("WID-A", "Widget A", 2, 1000.00)]))
+
+
+def test_loose_tolerance_override_reaches_the_pairwise_amount_component(tmp_path):
+    _over_billed_corpus(tmp_path)
+
+    default = matching.match_documents(str(tmp_path))
+    base = candidate_for(default, "PO-1", "INV-1")
+    assert base["components"]["amount"] == pytest.approx(0.5, abs=1e-4)
+    assert base["score"] == pytest.approx(0.795, abs=1e-4)
+    assert link_for(default, "PO-1")["status"] == "review"
+    assert link_for(default, "PO-1")["fulfilment"] == "over"
+
+    # The SAME documents, only the caller's tolerance differs: the excess now
+    # sits inside tolerance, so `amount` must become the line containment (1.0)
+    # and the pair must band up.  Before the fix the override reached only the
+    # gate and the reconciliation, leaving amount at the default-tolerance 0.5.
+    loose = matching.match_documents(str(tmp_path), tolerance_pct=1.0)
+    entry = candidate_for(loose, "PO-1", "INV-1")
+    assert entry["components"]["amount"] == pytest.approx(1.0, abs=1e-4)
+    assert entry["score"] == pytest.approx(0.92, abs=1e-4)
+    assert entry["score"] > base["score"]
+
+    link = link_for(loose, "PO-1")
+    assert link["scores"]["INV-1"] == pytest.approx(0.92, abs=1e-4)
+    assert link["status"] == "auto_linked"
+    assert link["fulfilment"] == "complete"
+    assert "OVER_BILLING" not in exception_types(loose, po_number="PO-1")
+
+
+def test_strict_tolerance_override_lowers_the_pairwise_amount_component(tmp_path):
+    write(tmp_path, "po.json", po(
+        "PO-1", "Globex Corporation", "2026-01-01", 1000.00,
+        [line("WID-B", "Widget B", 1, 1000.00)]))
+    write(tmp_path, "inv.json", inv(
+        "INV-1", "Globex Corporation", "2026-01-15", 1005.00,
+        [line("WID-B", "Widget B", 1, 1005.00)]))
+
+    default = matching.match_documents(str(tmp_path))
+    base = candidate_for(default, "PO-1", "INV-1")
+    assert base["components"]["amount"] == pytest.approx(1.0, abs=1e-4)
+    assert base["score"] == pytest.approx(1.0, abs=1e-4)
+
+    # 0.1% of 1000.00 is 1.00, so the 5.00 excess no longer fits.
+    strict = matching.match_documents(str(tmp_path), tolerance_pct=0.001)
+    entry = candidate_for(strict, "PO-1", "INV-1")
+    assert entry["components"]["amount"] < 1.0
+    assert entry["components"]["amount"] == pytest.approx(0.995, abs=1e-3)
+    assert entry["score"] < base["score"]
+    assert link_for(strict, "PO-1")["fulfilment"] == "over"
+    assert "OVER_BILLING" in exception_types(strict, po_number="PO-1")
+
+
+def test_explicit_default_tolerance_is_identical_to_the_implicit_default(tmp_path):
+    _over_billed_corpus(tmp_path)
+    write(tmp_path, "po2.json", po(
+        "PO-2", "Initech Limited", "2026-02-01", 620.00,
+        [line("LIC", "Licence", 1, 500.00), line("SUP", "Support", 1, 120.00)]))
+    write(tmp_path, "inv2.json", inv(
+        "INV-2", "Initech Limited", "2026-02-09", 500.00,
+        [line("LIC", "Licence", 1, 500.00)]))
+
+    implicit = matching.match_documents(str(tmp_path))
+    explicit = matching.match_documents(str(tmp_path), tolerance_pct=0.005)
+    assert explicit == implicit
